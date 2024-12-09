@@ -372,26 +372,38 @@ def generate_single_game_data(game_id):
 
 # generate_single_game_data('0022100001')
 
-seasons = ['2023-24', '2022-23', '2021-22']
+seasons = ['2023-24', '2022-23', '2021-22', '2020-21', '2019-20']
+# seasons = ['2023-24']
 
 # Initialize an empty list to store game IDs
 all_game_ids = []
 
 # Loop through each season and collect game IDs
 for season in seasons:
-    game_finder = leaguegamefinder.LeagueGameFinder(season_nullable=season)
+    # Specify 'Regular Season' directly
+    game_finder = leaguegamefinder.LeagueGameFinder(
+        season_nullable=season,
+        season_type_nullable='Regular Season'
+    )
     games = game_finder.get_data_frames()[0]
     game_ids = games['GAME_ID'].unique()
     all_game_ids.extend(game_ids)
 
-num_workers = 6
+num_workers = 9
+
+failed_games = []  # List to keep track of game IDs that failed
+num_workers = 8  # Example value, adjust as needed
 
 with ThreadPoolExecutor(max_workers=num_workers) as executor:
     futures = {executor.submit(generate_single_game_data, game_id): game_id for game_id in all_game_ids}
     for future in tqdm(as_completed(futures), total=len(futures), desc="Processing Games"):
         game_id = futures[future]
         try:
-            # If there is no returned value, this will just return None.
+            # If generate_single_game_data doesn't return a value, .result() is None
             future.result()
         except Exception as e:
             print(f"Game {game_id} generated an exception: {e}")
+            failed_games.append(game_id)
+
+# After the loop, failed_games will contain all game IDs that raised exceptions.
+print("Failed games:", failed_games)
