@@ -37,17 +37,6 @@ def generate_single_game_data(game_id):
     filtered_pbp = pbp[pbp['EVENTMSGTYPE'].isin(valid_event_types)].copy()
     filtered_pbp = filtered_pbp.reset_index(drop=True)
 
-    # player_columns = [
-    #     "AWAY_PLAYER1", "AWAY_PLAYER2", "AWAY_PLAYER3", "AWAY_PLAYER4", "AWAY_PLAYER5",
-    #     "HOME_PLAYER1", "HOME_PLAYER2", "HOME_PLAYER3", "HOME_PLAYER4", "HOME_PLAYER5"
-    # ]
-    # # Filter rows so that all on-court players are in player_id_set
-    # mask = filtered_pbp[player_columns].isin(all_players).all(axis=1)
-    # filtered_pbp = filtered_pbp[mask].copy()
-
-    # Now we have only the rows we care about.
-    # We can iterate through these rows and handle each event type as needed.
-
     processed_pbp = pd.DataFrame(columns=columns)
     rows = []
 
@@ -70,25 +59,9 @@ def generate_single_game_data(game_id):
         
         return off_players, def_players
 
-    def check_and_one(pbp, current_idx, shooter_id):
-        # Look ahead for next free throw attempt by the same shooter
-        next_events = pbp.iloc[current_idx+1:]
-        for i, r in next_events.iterrows():
-            if r['EVENTMSGTYPE'] == FREE_THROW_ATTEMPT and r['PLAYER1_ID'] == shooter_id:
-                # Check if made free throw
-                desc = (r['HOMEDESCRIPTION'] if pd.notnull(r['HOMEDESCRIPTION']) else '') + \
-                    (r['VISITORDESCRIPTION'] if pd.notnull(r['VISITORDESCRIPTION']) else '')
-                if "MISS" not in desc.upper():
-                    # FT made => and-one
-                    return True
-                else:
-                    return False
-        return False
-
     for idx, row in filtered_pbp.iterrows():
         event_type = row['EVENTMSGTYPE']
         off_players, def_players = get_off_def_players(row)
-        
         # Switch-like structure to handle cases
         if event_type == FIELD_GOAL_MADE:
             # Determine if 2pt or 3pt
@@ -113,18 +86,6 @@ def generate_single_game_data(game_id):
             shooter_id = row['PLAYER1_ID']
             assister_id = row['PLAYER2_ID'] if assisted else np.nan
 
-            # Check for and-one
-            if check_and_one(filtered_pbp, idx, shooter_id):
-                # 4-point scenarios for both 2pt+1 or 3pt+1
-                # If base_outcome in [0,2] => unassisted => outcome=4
-                # If base_outcome in [1,3] => assisted => outcome=5
-                if base_outcome in [0, 2]:
-                    final_outcome = 4
-                else:
-                    final_outcome = 5
-            else:
-                final_outcome = base_outcome
-
             data = {
                 "OFF_PLAYER1_ID": off_players[0],
                 "OFF_PLAYER2_ID": off_players[1],
@@ -136,7 +97,7 @@ def generate_single_game_data(game_id):
                 "DEF_PLAYER3_ID": def_players[2],
                 "DEF_PLAYER4_ID": def_players[3],
                 "DEF_PLAYER5_ID": def_players[4],
-                "OUTCOME": final_outcome,
+                "OUTCOME": base_outcome,
                 "SECOND_CHANCE": 0, # Not computed here
                 "SHOOTER_ID": shooter_id,
                 "ASSISTER_ID": assister_id,
@@ -163,9 +124,9 @@ def generate_single_game_data(game_id):
                     blocker_id = row['PLAYER3_ID']
             
             if blocked:
-                final_outcome = 6  # Missed (blocked)
+                final_outcome = 4  # Missed (blocked)
             else:
-                final_outcome = 7  # Missed (unblocked)
+                final_outcome = 5  # Missed (unblocked)
             
             shooter_id = row['PLAYER1_ID']
             
@@ -217,18 +178,65 @@ def generate_single_game_data(game_id):
             # Parse the number of attempts from the first FT in the sequence
             shooter_id = row['PLAYER1_ID']
             desc = (row['HOMEDESCRIPTION'] if pd.notnull(row['HOMEDESCRIPTION']) else '') + \
-                (row['VISITORDESCRIPTION'] if pd.notnull(row['VISITORDESCRIPTION']) else '')
+                    (row['VISITORDESCRIPTION'] if pd.notnull(row['VISITORDESCRIPTION']) else '')
             desc_up = desc.upper()
 
             match = re.search(r'FREE THROW.*?(\d+)\s+OF\s+(\d+)', desc_up)
             if not match:
                 continue
             total_fts = int(match.group(2))
-            if total_fts not in [2, 3]:
+            if total_fts not in [1, 2, 3]:
                 # Not a scenario we care about
                 continue
 
-            # We'll accumulate all consecutive FTs for this shooter
+            if total_fts == 1:
+                # Only one free throw attempt in this sequence
+                # If made set result to 12, if not made set result to 13
+                if "MISS" not in desc_up:
+                    final_outcome = 12  # Single FT made
+                    second_chance = 0
+                    rebounder_id = np.nan
+                else:
+                    final_outcome = 13  # Single FT missed
+                    second_chance = 0
+                    rebounder_id = np.nan
+                    # Check for rebound after missed FT
+                    next_after_ft = filtered_pbp.loc[idx+1:]
+                    for k, rb in next_after_ft.iterrows():
+                        if rb['EVENTMSGTYPE'] == REBOUND:
+                            if pd.isnull(rb['PLAYER1_NAME']) or rb['PLAYER1_NAME'].strip() == '':
+                                # Team rebound, skip
+                                continue
+                            rebounder_id = rb['PLAYER1_ID']
+                            # If offensive rebound
+                            if rebounder_id in off_players:
+                                second_chance = 1
+                            break
+
+                data = {
+                    "OFF_PLAYER1_ID": off_players[0],
+                    "OFF_PLAYER2_ID": off_players[1],
+                    "OFF_PLAYER3_ID": off_players[2],
+                    "OFF_PLAYER4_ID": off_players[3],
+                    "OFF_PLAYER5_ID": off_players[4],
+                    "DEF_PLAYER1_ID": def_players[0],
+                    "DEF_PLAYER2_ID": def_players[1],
+                    "DEF_PLAYER3_ID": def_players[2],
+                    "DEF_PLAYER4_ID": def_players[3],
+                    "DEF_PLAYER5_ID": def_players[4],
+                    "OUTCOME": final_outcome,
+                    "SECOND_CHANCE": second_chance,
+                    "SHOOTER_ID": shooter_id,
+                    "ASSISTER_ID": np.nan,
+                    "BLOCKER_ID": np.nan,
+                    "STEALER_ID": np.nan,
+                    "REBOUNDER_ID": rebounder_id,
+                    "TURNOVER_ID": np.nan
+                }
+                rows.append(data)
+                continue
+
+            # We'll accumulate all consecutive FTs for this shooter if total_fts in [2,3]
             made_count = 0
             final_attempt_idx = None
 
@@ -269,19 +277,19 @@ def generate_single_game_data(game_id):
                 # No final attempt found
                 continue
 
-            # Determine outcome based on made_count
-            # 0 made -> 10
-            # 1 made -> 11
-            # 2 made -> 12
-            # 3 made -> 13
+            # Determine outcome based on made_count (for 2 or 3 FTs)
+            # 0 made -> 8
+            # 1 made -> 9
+            # 2 made -> 10
+            # 3 made -> 11
             if made_count == 0:
-                final_outcome = 10
+                final_outcome = 8
             elif made_count == 1:
-                final_outcome = 11
+                final_outcome = 9
             elif made_count == 2:
-                final_outcome = 12
+                final_outcome = 10
             elif made_count == 3:
-                final_outcome = 13
+                final_outcome = 11
             else:
                 # Unexpected
                 continue
@@ -333,10 +341,10 @@ def generate_single_game_data(game_id):
                 # 3. Document who steals: If there's PLAYER2_ID and a player name => stolen
                 # If pd.notnull(PLAYER2_ID) and PERSON2TYPE in [4,5], that indicates a steal
                 if pd.notnull(row['PLAYER2_ID']) and row['PLAYER2_ID'] != 0 and row['PERSON2TYPE'] in [4,5]:
-                    final_outcome = 8  # Turnover (stolen)
+                    final_outcome = 6  # Turnover (stolen)
                     stealer_id = row['PLAYER2_ID']
                 else:
-                    final_outcome = 9  # Turnover (unforced)
+                    final_outcome = 7  # Turnover (unforced)
                     stealer_id = np.nan
 
             turnover_player_id = row['PLAYER1_ID']
@@ -370,6 +378,8 @@ def generate_single_game_data(game_id):
     processed_pbp = pd.DataFrame(rows, columns=columns)
     processed_pbp.to_csv(os.path.join(output_folder, f"{game_id}.csv"))
 
+
+
 # generate_single_game_data('0022100001')
 
 seasons = ['2023-24', '2022-23', '2021-22', '2020-21', '2019-20']
@@ -388,8 +398,6 @@ for season in seasons:
     games = game_finder.get_data_frames()[0]
     game_ids = games['GAME_ID'].unique()
     all_game_ids.extend(game_ids)
-
-num_workers = 9
 
 failed_games = []  # List to keep track of game IDs that failed
 num_workers = 8  # Example value, adjust as needed
