@@ -186,7 +186,7 @@ def gather_unique_player_ids(files, player_cols):
     unique_ids = set()
     for fpath in files:
         print(f"Scanning file for unique IDs: {fpath}")
-        df = pd.read_parquet(fpath, columns=player_cols)  # load only player columns
+        df = pd.read_parquet(fpath, columns=player_cols)
         df = df.dropna(subset=player_cols)
         for col in player_cols:
             unique_ids.update(df[col].dropna().astype(int).unique())
@@ -197,10 +197,14 @@ train_files = sorted([os.path.join(data_dir, f) for f in os.listdir(data_dir) if
 val_files = sorted([os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.startswith('val_') and f.endswith('.parquet')])
 test_files = sorted([os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.startswith('test_') and f.endswith('.parquet')])
 
+player_columns = [
+    "OFF_PLAYER1_ID", "OFF_PLAYER2_ID", "OFF_PLAYER3_ID", "OFF_PLAYER4_ID", "OFF_PLAYER5_ID",
+    "DEF_PLAYER1_ID", "DEF_PLAYER2_ID", "DEF_PLAYER3_ID", "DEF_PLAYER4_ID", "DEF_PLAYER5_ID"
+]
 all_files = train_files + val_files + test_files
 all_unique_ids = gather_unique_player_ids(all_files, player_columns)
 
-unique_players = np.sort(list(all_unique_ids))  # all_unique_ids was gathered from the data
+unique_players = np.sort(list(all_unique_ids))
 player_to_index = {p: i for i, p in enumerate(unique_players)}
 
 result_df = generate_comparison_sheet(

@@ -407,7 +407,7 @@ for season in seasons:
     all_game_ids.extend(game_ids)
 
 failed_games = []  # List to keep track of game IDs that failed
-num_workers = 8  # Example value, adjust as needed
+num_workers = 8
 
 with ThreadPoolExecutor(max_workers=num_workers) as executor:
     futures = {executor.submit(generate_single_game_data, game_id): game_id for game_id in all_game_ids}
