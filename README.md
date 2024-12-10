@@ -16,3 +16,6 @@ This repository contains all the scripts and files used to fetch, process, model
 
 - **evaluation.py**  
   Evaluates the trained models and compares their predictions against real-world game results. It also allows for comparison with various all-in-one basketball metrics, producing performance statistics that highlight the effectiveness of each approach.
+
+- **evaluation.py**
+  Notebooks that do experiments.
