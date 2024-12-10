@@ -44,8 +44,9 @@ for filename in os.listdir(data_dir):
                 player_counts[p] = player_counts.get(p, 0) + 1
 
 # Calculate the threshold
-average_team_possessions = total_possessions / 30.0
-threshold = 0.01 * average_team_possessions  # 1% of average team possessions
+# average_team_possessions = total_possessions / 30.0
+# threshold = 0.2 * average_team_possessions  # 10% of average team possessions
+threshold = 4000
 
 # Identify rare players
 rare_players = {p for p, count in player_counts.items() if count < threshold}

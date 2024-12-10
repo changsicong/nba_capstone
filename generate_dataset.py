@@ -192,12 +192,13 @@ def generate_single_game_data(game_id):
             if total_fts == 1:
                 # Only one free throw attempt in this sequence
                 # If made set result to 12, if not made set result to 13
-                if "MISS" not in desc_up:
-                    final_outcome = 12  # Single FT made
+                made = "MISS" not in desc_up
+                if made:
+                    final_outcome = 12
                     second_chance = 0
                     rebounder_id = np.nan
                 else:
-                    final_outcome = 13  # Single FT missed
+                    final_outcome = 13
                     second_chance = 0
                     rebounder_id = np.nan
                     # Check for rebound after missed FT
@@ -205,7 +206,7 @@ def generate_single_game_data(game_id):
                     for k, rb in next_after_ft.iterrows():
                         if rb['EVENTMSGTYPE'] == REBOUND:
                             if pd.isnull(rb['PLAYER1_NAME']) or rb['PLAYER1_NAME'].strip() == '':
-                                # Team rebound, skip
+                                # team rebound, skip
                                 continue
                             rebounder_id = rb['PLAYER1_ID']
                             # If offensive rebound
@@ -236,7 +237,7 @@ def generate_single_game_data(game_id):
                 rows.append(data)
                 continue
 
-            # We'll accumulate all consecutive FTs for this shooter if total_fts in [2,3]
+            # For total_fts in [2,3]:
             made_count = 0
             final_attempt_idx = None
 
@@ -277,7 +278,7 @@ def generate_single_game_data(game_id):
                 # No final attempt found
                 continue
 
-            # Determine outcome based on made_count (for 2 or 3 FTs)
+            # Determine outcome based on made_count
             # 0 made -> 8
             # 1 made -> 9
             # 2 made -> 10
@@ -294,10 +295,16 @@ def generate_single_game_data(game_id):
                 # Unexpected
                 continue
 
-            # Check if final attempt missed
+            # Check explicitly if the final attempt was missed by re-checking its description
+            fr_final = filtered_pbp.loc[final_attempt_idx]
+            f_desc_final = (fr_final['HOMEDESCRIPTION'] if pd.notnull(fr_final['HOMEDESCRIPTION']) else '') + \
+                        (fr_final['VISITORDESCRIPTION'] if pd.notnull(fr_final['VISITORDESCRIPTION']) else '')
+            f_desc_final_up = f_desc_final.upper()
+            final_attempt_missed = "MISS" in f_desc_final_up
+
             second_chance = 0
             rebounder_id = np.nan
-            if made_count < total_fts:
+            if final_attempt_missed:
                 # last attempt missed
                 next_after_ft = filtered_pbp.loc[final_attempt_idx+1:]
                 for k, rb in next_after_ft.iterrows():
