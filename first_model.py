@@ -52,14 +52,22 @@ print("Example mapping:", list(player_to_index.items())[:10])
 ##############################################
 # Model Definition Using Embeddings (with updated v)
 ##############################################
+def slice_offense(t):
+    return t[:, :5, :]
+
+def slice_defense(t):
+    return t[:, 5:, :]
+
+def mean_axis_1(t):
+    return tf.reduce_mean(t, axis=1)
+
 input_players = Input(shape=(seq_len,), dtype='int32', name='players_input')
 player_embedding = layers.Embedding(input_dim=v, output_dim=embedding_dim, name='player_embedding')(input_players)
 
-offense_emb = layers.Lambda(lambda t: t[:, :5, :], name='offense_slice')(player_embedding)
-defense_emb = layers.Lambda(lambda t: t[:, 5:, :], name='defense_slice')(player_embedding)
-
-off_mean = layers.Lambda(lambda t: tf.reduce_mean(t, axis=1), name='off_mean')(offense_emb)
-def_mean = layers.Lambda(lambda t: tf.reduce_mean(t, axis=1), name='def_mean')(defense_emb)
+offense_emb = layers.Lambda(slice_offense, name='offense_slice')(player_embedding)
+defense_emb = layers.Lambda(slice_defense, name='defense_slice')(player_embedding)
+off_mean = layers.Lambda(mean_axis_1, name='off_mean')(offense_emb)
+def_mean = layers.Lambda(mean_axis_1, name='def_mean')(defense_emb)
 
 concat = layers.Concatenate(name='concat')([off_mean, def_mean])
 hidden = layers.Dense(128, activation='relu', name='hidden')(concat)
